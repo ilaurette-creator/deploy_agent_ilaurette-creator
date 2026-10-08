@@ -89,3 +89,71 @@ deploy_app() {
     CURRENT_DEPLOY_DIR=""
     echo "[+] Deployment completed in '$TARGET_DIR'."
 }
+
+# Feature 2: Run Application
+run_app() {
+    read -rp "Enter deployed directory name (e.g., attendance_tracker_v1): " TARGET
+    if [ ! -d "$TARGET" ]; then
+        echo "Error: Directory '$TARGET' does not exist." >&2
+        return 1
+    fi
+    echo "[*] Executing Attendance Tracker in '$TARGET'..."
+    (
+        cd "$TARGET" || exit 1
+        python3 attendance_checker.py
+    )
+}
+
+# Feature 3: Archive Operational Logs
+archive_logs() {
+    read -rp "Enter deployed directory name: " TARGET
+    if [ ! -d "$TARGET" ]; then
+        echo "Error: Directory '$TARGET' does not exist." >&2
+        return 1
+    fi
+
+    TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+    ATT_LOG="$TARGET/reports/attendance.log"
+    ABS_LOG="$TARGET/reports/absent.log"
+
+    if [ -f "$ATT_LOG" ]; then
+        cp "$ATT_LOG" "$TARGET/archives/attendance/attendance_${TIMESTAMP}.log"
+        echo "[+] Archived attendance log to archives/attendance/attendance_${TIMESTAMP}.log"
+    fi
+
+    if [ -f "$ABS_LOG" ]; then
+        cp "$ABS_LOG" "$TARGET/archives/absent/absent_${TIMESTAMP}.log"
+        echo "[+] Archived absent log to archives/absent/absent_${TIMESTAMP}.log"
+    fi
+}
+
+# Main Menu Loop
+show_menu() {
+    while true; do
+        echo -e "\n========================================="
+        echo "  STUDENT ATTENDANCE TRACKER - MENU      "
+        echo "========================================="
+        echo "  1) Feature 1: Deploy Application"
+        echo "  2) Feature 2: Run Application"
+        echo "  3) Feature 3: Archive Logs"
+        echo "  4) Exit"
+        echo "========================================="
+        read -rp "Select choice (1-4): " CHOICE
+
+        case "$CHOICE" in
+            1) deploy_app ;;
+            2) run_app ;;
+            3) archive_logs ;;
+            4) echo "Exiting."; exit 0 ;;
+            *) echo "Invalid option." ;;
+        esac
+    done
+}
+
+# Entrypoint Flag Support
+case "$1" in
+    --deploy|-d) deploy_app ;;
+    --run|-r) run_app ;;
+    --archive|-a) archive_logs ;;
+    *) show_menu ;;
+esac
