@@ -1,0 +1,3 @@
+#!/bin/bash
+echo "attendance_tracker_*/" > .gitignore
+echo "*_archive.zip" >> .gitignore
