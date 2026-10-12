@@ -1,12 +1,11 @@
-#!/usr/bin/env bash
 # Signal Trap Handler (Ctrl+C / Ctrl+Z)
 handle_interrupt() {
     echo -e "\n\n[!] Deployment interrupted by user signal (Ctrl+C / Ctrl+Z)!"
     if [ -n "$CURRENT_DEPLOY_DIR" ] && [ -d "$CURRENT_DEPLOY_DIR" ]; then
         ARCHIVE_NAME="${CURRENT_DEPLOY_DIR}_archive.zip"
         echo "[*] Archiving incomplete deployment folder '$CURRENT_DEPLOY_DIR'..."
-        zip -r "$ARCHIVE_NAME" "$CURRENT_DEPLOY_DIR" > /dev/null
-        echo " Incomplete deployment zipped to: $ARCHIVE_NAME"
+        zip -r "$ARCHIVE_NAME" "$CURRENT_DEPLOY_DIR" > /dev/null 2>&1
+        echo "[+] Incomplete deployment zipped to: $ARCHIVE_NAME"
     fi
     exit 130
 }
@@ -20,7 +19,7 @@ deploy_app() {
     echo "       FEATURE 1: DEPLOY APPLICATION      "
     echo "========================================="
 
-    read -rp "Enter directory suffix/name: " DIR_INPUT
+    read -rp "Enter directory suffix/name (e.g., v1): " DIR_INPUT
     DIR_INPUT=${DIR_INPUT:-v1}
     TARGET_DIR="attendance_tracker_${DIR_INPUT}"
     CURRENT_DEPLOY_DIR="$TARGET_DIR"
@@ -70,8 +69,8 @@ deploy_app() {
     # Enforce Security Permissions
     chmod +x "$TARGET_DIR/attendance_checker.py"
     chmod 600 "$TARGET_DIR/Helpers/config.json"
-    echo "[+] Set executable permissions (chmod +x) on attendance_checker.py"
-    echo "[+] Restricted Helpers/config.json to owner access (chmod 600)"
+    echo "> Set executable permissions (chmod +x) on attendance_checker.py"
+    echo "> Restricted Helpers/config.json to owner access (chmod 600)"
 
     # Update Alert Thresholds via sed
     read -rp "Update alert thresholds? (y/N): " UPDATE_T
@@ -82,12 +81,12 @@ deploy_app() {
         FAIL_V=${FAIL_V:-50}
         sed -i "s/\"warning\":*/\"warning\": $WARN_V/" "$TARGET_DIR/Helpers/config.json"
         sed -i "s/\"failure\":*/\"failure\": $FAIL_V/" "$TARGET_DIR/Helpers/config.json"
-        echo "[+] Updated thresholds in config.json"
+        echo "> Updated thresholds in config.json"
     fi
 
     trap - SIGINT SIGTSTP
     CURRENT_DEPLOY_DIR=""
-    echo "[+] Deployment completed in '$TARGET_DIR'."
+    echo "> Deployment completed in '$TARGET_DIR'."
 }
 
 # Feature 2: Run Application
@@ -97,13 +96,14 @@ run_app() {
         echo "Error: Directory '$TARGET' does not exist." >&2
         return 1
     fi
-    echo "[*] Executing Attendance Tracker in '$TARGET'..."
+    echo "> Executing Attendance Tracker in '$TARGET'..."
     (
         cd "$TARGET" || exit 1
         python3 attendance_checker.py
     )
 }
-#Feature 3: Archiving 
+
+# Feature 3: Archive Operational Logs
 archive_logs() {
     read -rp "Enter deployed directory name: " TARGET
     if [ ! -d "$TARGET" ]; then
@@ -115,32 +115,46 @@ archive_logs() {
     ATT_LOG="$TARGET/reports/attendance.log"
     ABS_LOG="$TARGET/reports/absent.log"
 
-    # 1. Guarantee that the target archive subdirectories exist
-    mkdir -p "$TARGET/archives/attendance"
-    mkdir -p "$TARGET/archives/absent"
-
-    # 2. Archive attendance log if present
     if [ -f "$ATT_LOG" ]; then
-        DEST_ATT="$TARGET/archives/attendance/attendance_${TIMESTAMP}.log"
-        if cp "$ATT_LOG" "$DEST_ATT"; then
-            echo "[+] Archived attendance log to archives/attendance/attendance_${TIMESTAMP}.log"
-        else
-            echo "Error: Failed to copy attendance log." >&2
-        fi
-    else
-        echo "[!] Notice: '$ATT_LOG' does not exist. Skipping."
+        cp "$ATT_LOG" "$TARGET/archives/attendance/attendance_${TIMESTAMP}.log"
+        echo "[+] Archived attendance log to archives/attendance/attendance_${TIMESTAMP}.log"
     fi
 
-    # 3. Archive absent log if present
     if [ -f "$ABS_LOG" ]; then
-        DEST_ABS="$TARGET/archives/absent/absent_${TIMESTAMP}.log"
-        if cp "$ABS_LOG" "$DEST_ABS"; then
-            echo "[+] Archived absent log to archives/absent/absent_${TIMESTAMP}.log"
-        else
-            echo "Error: Failed to copy absent log." >&2
-        fi
-    else
-        echo "[!] Notice: '$ABS_LOG' does not exist. Skipping."
+        cp "$ABS_LOG" "$TARGET/archives/absent/absent_${TIMESTAMP}.log"
+        echo "[+] Archived absent log to archives/absent/absent_${TIMESTAMP}.log"
     fi
 }
+
+# Main Menu Loop
+show_menu() {
+    while true; do
+        echo -e "\n========================================="
+        echo "  STUDENT ATTENDANCE TRACKER - MENU      "
+        echo "========================================="
+        echo "  1) Feature 1: Deploy Application"
+        echo "  2) Feature 2: Run Application"
+        echo "  3) Feature 3: Archive Logs"
+        echo "  4) Exit"
+        echo "========================================="
+        read -rp "Select choice (1-4): " CHOICE
+
+        case "$CHOICE" in
+            1) deploy_app ;;
+            2) run_app ;;
+            3) archive_logs ;;
+            4) echo "GoodBye!"; exit 0 ;;
+            *) echo "Invalid option." ;;
+        esac
+    done
+}
+
+# Entrypoint Flag Support
+case "$1" in
+    --deploy|-d) deploy_app ;;
+    --run|-r) run_app ;;
+    --archive|-a) archive_logs ;;
+    *) show_menu ;;
+esac
+
 
