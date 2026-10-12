@@ -103,8 +103,7 @@ run_app() {
         python3 attendance_checker.py
     )
 }
-
-# Feature 3: Archive Operational Logs
+#Feature 3: Archiving 
 archive_logs() {
     read -rp "Enter deployed directory name: " TARGET
     if [ ! -d "$TARGET" ]; then
@@ -116,44 +115,32 @@ archive_logs() {
     ATT_LOG="$TARGET/reports/attendance.log"
     ABS_LOG="$TARGET/reports/absent.log"
 
+    # 1. Guarantee that the target archive subdirectories exist
+    mkdir -p "$TARGET/archives/attendance"
+    mkdir -p "$TARGET/archives/absent"
+
+    # 2. Archive attendance log if present
     if [ -f "$ATT_LOG" ]; then
-        cp "$ATT_LOG" "$TARGET/archives/attendance/attendance_${TIMESTAMP}.log"
-        echo "[+] Archived attendance log to archives/attendance/attendance_${TIMESTAMP}.log"
+        DEST_ATT="$TARGET/archives/attendance/attendance_${TIMESTAMP}.log"
+        if cp "$ATT_LOG" "$DEST_ATT"; then
+            echo "[+] Archived attendance log to archives/attendance/attendance_${TIMESTAMP}.log"
+        else
+            echo "Error: Failed to copy attendance log." >&2
+        fi
+    else
+        echo "[!] Notice: '$ATT_LOG' does not exist. Skipping."
     fi
 
+    # 3. Archive absent log if present
     if [ -f "$ABS_LOG" ]; then
-        cp "$ABS_LOG" "$TARGET/archives/absent/absent_${TIMESTAMP}.log"
-        echo "[+] Archived absent log to archives/absent/absent_${TIMESTAMP}.log"
+        DEST_ABS="$TARGET/archives/absent/absent_${TIMESTAMP}.log"
+        if cp "$ABS_LOG" "$DEST_ABS"; then
+            echo "[+] Archived absent log to archives/absent/absent_${TIMESTAMP}.log"
+        else
+            echo "Error: Failed to copy absent log." >&2
+        fi
+    else
+        echo "[!] Notice: '$ABS_LOG' does not exist. Skipping."
     fi
 }
 
-# Main Menu Loop
-show_menu() {
-    while true; do
-        echo -e "\n========================================="
-        echo "  STUDENT ATTENDANCE TRACKER - MENU      "
-        echo "========================================="
-        echo "  1) Feature 1: Deploy Application"
-        echo "  2) Feature 2: Run Application"
-        echo "  3) Feature 3: Archive Logs"
-        echo "  4) Exit"
-        echo "========================================="
-        read -rp "Select choice (1-4): " CHOICE
-
-        case "$CHOICE" in
-            1) deploy_app ;;
-            2) run_app ;;
-            3) archive_logs ;;
-            4) echo "Exiting."; exit 0 ;;
-            *) echo "Invalid option." ;;
-        esac
-    done
-}
-
-# Entrypoint Flag Support
-case "$1" in
-    --deploy|-d) deploy_app ;;
-    --run|-r) run_app ;;
-    --archive|-a) archive_logs ;;
-    *) show_menu ;;
-esac
