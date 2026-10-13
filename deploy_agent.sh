@@ -1,312 +1,173 @@
 #!/usr/bin/env bash
-CURRENT_DEPLOY_DIR=""
-
-check_dependencies() {
-    local missing=0
-
+cd "$(dirname "$0")"  
+folder=""
+# Check if required tools are installed
+check_tools() {
 if command -v python3 >/dev/null; then
-    echo "python3 is  installed $(python3 --version)"
+    echo "python3 is installed"
 else 
     echo "python3 is not installed"
 fi
 
 if command -v zip >/dev/null; then
-    echo "zip is installed$(zip -v |head -n 2 |tail -n 1)"
+    echo "zip is installed"
 else
     
     echo "zip is not installed"
 fi
-
 }
 
-# ------------------------------------------------------------------------------
-# Signal Trap Handler (Ctrl+C / SIGINT & Ctrl+Z / SIGTSTP)
-# ------------------------------------------------------------------------------
-handle_interrupt() {
-    echo -e "\n\n[!] Deployment process interrupted by signal (Ctrl+C / Ctrl+Z)!"
-    if [ -n "$CURRENT_DEPLOY_DIR" ] && [ -d "$CURRENT_DEPLOY_DIR" ]; then
-        ARCHIVE_NAME="${CURRENT_DEPLOY_DIR}_archive.zip"
-        echo "[*] Archiving incomplete deployment folder '$CURRENT_DEPLOY_DIR'..."
-        
-        # Compress incomplete directory into .zip archive
-        zip -r "$ARCHIVE_NAME" "$CURRENT_DEPLOY_DIR" > /dev/null 2>&1
-        echo "[+] Incomplete deployment successfully zipped into: $ARCHIVE_NAME"
-    else
-        echo "[*] No active deployment directory to archive."
+run_in_folder() {
+    ( cd "$1" && python3 attendance_checker.py )
+}
+
+# Runs when the user presses Ctrl+C or Ctrl+Z during deployment
+stop_deploy() {
+    echo
+    echo "Deployment was interrupted!"
+    if [ -d "$folder" ]; then
+        if zip -r "${folder}_archive.zip" "$folder" > /dev/null; then
+            rm -rf "$folder"
+            echo "The unfinished project was saved in ${folder}_archive.zip"
+        else
+            echo "Could not create the zip file."
+        fi
     fi
-    echo "[*] Exiting cleanly."
     exit 130
 }
 
-# ------------------------------------------------------------------------------
-# Feature 1: Deploy Application
-# ------------------------------------------------------------------------------
 deploy_app() {
-    check_dependencies
-    
-    # Enable signal trap during deployment phase
-    trap 'handle_interrupt' SIGINT SIGTSTP
+    check_tools || return
+    echo "Checks passed: python3 and zip are installed."
 
-    echo -e "\n========================================="
-    echo "       FEATURE 1: DEPLOY APPLICATION      "
-    echo "========================================="
+    read -p "Enter a name for the project (example: v1): " name
+    if [[ ! $name =~ ^[A-Za-z0-9_-]+$ ]]; then
+        echo "Error: use only letters, numbers, - and _"
+        return
+    fi
+    folder="attendance_tracker_$name"
 
-    # Step A: Prompt for directory suffix
-    read -p "Enter directory name: " DIR_INPUT
-    if [ -z "$DIR_INPUT" ]; then
-        DIR_INPUT="v1"
-        echo "[*] Defaulting suffix to 'v1'"
+    for file in attendance_checker.py config.json assets.csv; do
+        if [ ! -f "templates/$file" ]; then
+            echo "Error: templates/$file is missing."
+            return
+        fi
+    done
+
+    if [ -d "$folder" ]; then
+        read -p "$folder already exists. Overwrite it? (y/n): " answer
+        if [ "$answer" != "y" ]; then
+            echo "Cancelled."
+            return
+        fi
+        rm -rf "$folder"
     fi
 
-    TARGET_DIR="attendance_tracker_${DIR_INPUT}"
-    CURRENT_DEPLOY_DIR="$TARGET_DIR"
+    trap stop_deploy SIGINT SIGTSTP
 
-    # Overwrite safety check
-    if [ -d "$TARGET_DIR" ]; then
-        echo -e "\n[!] Warning: Directory '$TARGET_DIR' already exists."
-        read -rp "Do you want to overwrite it? (y/N): " OVERWRITE_CHOICE
-        case "$OVERWRITE_CHOICE" in
-            [yY][eE][sS]|[yY])
-                echo "[*] Overwriting existing directory '$TARGET_DIR'..."
-                rm -rf "$TARGET_DIR"
-                ;;
-            *)
-                echo "[*] Deployment aborted by user."
-                trap - SIGINT SIGTSTP
-                CURRENT_DEPLOY_DIR=""
-                return
-                ;;
-        esac
-    fi
+    mkdir -p "$folder/Helpers" "$folder/reports" "$folder/archives/attendance" "$folder/archives/absent"
+    cp templates/attendance_checker.py "$folder/"
+    cp templates/config.json "$folder/Helpers/"
 
-    # Step B: Construct Directory Structure
-    echo "[*] Creating project directory structure..."
-    mkdir -p "$TARGET_DIR/Helpers"
-    mkdir -p "$TARGET_DIR/reports"
-    mkdir -p "$TARGET_DIR/archives/attendance"
-    mkdir -p "$TARGET_DIR/archives/absent"
+    echo "1) Copy students from the template"
+    echo "2) Create new students (all start at 0)"
+    read -p "Choose 1 or 2: " choice
 
-    # Check for template files
-    if [ ! -f "templates/attendance_checker.py" ] || [ ! -f "templates/config.json" ] || [ ! -f "templates/assets.csv" ]; then
-        echo "Error: Required template files missing in 'templates/' directory." >&2
-        rm -rf "$TARGET_DIR"
-        trap - SIGINT SIGTSTP
-        CURRENT_DEPLOY_DIR=""
-        exit 1
-    fi
-
-    # Step C: Populate Files
-    echo "[*] Deploying base code and default configuration..."
-    cp "templates/attendance_checker.py" "$TARGET_DIR/attendance_checker.py"
-    cp "templates/config.json" "$TARGET_DIR/Helpers/config.json"
-
-    echo -e "\nSelect Roster Generation Path:"
-    echo "  1) Option A: Copy roster from sample template (templates/assets.csv)"
-    echo "  2) Option B: Generate fresh roster with 0 prior attendance/absence"
-    read -rp "Enter choice (1 or 2): " ROSTER_OPTION
-
-    if [ "$ROSTER_OPTION" -eq 1 ]; then
-        read -rp "How many students to copy from template (1-10)? [Default 10]: " STUDENT_COUNT
-        STUDENT_COUNT=${STUDENT_COUNT:-10}
-        
-        # Copy header + student rows
-        head -n 1 "templates/assets.csv" > "$TARGET_DIR/Helpers/assets.csv"
-        tail -n +2 "templates/assets.csv" | head -n "$STUDENT_COUNT" >> "$TARGET_DIR/Helpers/assets.csv"
-        
-        # Template roster has 4 prior sessions -> total_sessions: 5
-        sed -i "s/\"total_sessions\": [1, 2, 4-7, 10-12]*/\"total_sessions\": 5/" "$TARGET_DIR/Helpers/config.json"
-        echo "[+] Roster created with $STUDENT_COUNT student(s) from template. Config set to total_sessions=5."
-
+    if [ "$choice" = "1" ]; then
+        read -p "How many students to copy (1-10)? " count
+        if [[ ! $count =~ ^[1-9][0-9]*$ ]]; then
+            count=10
+        fi
+        head -n 1 templates/assets.csv > "$folder/Helpers/assets.csv"
+        tail -n +2 templates/assets.csv | head -n "$count" >> "$folder/Helpers/assets.csv"
     else
-        read -rp "How many fresh students to generate? [Default 5]: " FRESH_COUNT
-        FRESH_COUNT=${FRESH_COUNT:-5}
+        read -p "How many new students? " count
+        if [[ ! $count =~ ^[1-9][0-9]*$ ]]; then
+            count=5
+        fi
+        names=("Alex Rivera" "Beatriz Santos" "Chen Wei" "David Okon" "Elena Rostova" "Farhan Ali" "Grace Hopper" "Hassan Mahmoud" "Isabella Cruz" "Joseph Kim")
+        emails=(alex beatriz chen david elena farhan grace hassan isabella joseph)
 
-        echo "Email,Names,Attendance Count,Absence Count" > "$TARGET_DIR/Helpers/assets.csv"
-        
-        SAMPLE_NAMES=("Alex Rivera" "Beatriz Santos" "Chen Wei" "David Okon" "Elena Rostova" "Farhan Ali" "Grace Hopper" "Hassan Mahmoud" "Isabella Cruz" "Joseph Kim")
-        SAMPLE_EMAILS=("alex@example.com" "beatriz@example.com" "chen@example.com" "david@example.com" "elena@example.com" "farhan@example.com" "grace@example.com" "hassan@example.com" "isabella@example.com" "joseph@example.com")
-
-        for ((i=0; i<FRESH_COUNT; i++)); do
-            idx=$((i % 10))
-            name="${SAMPLE_NAMES[$idx]}"
-            email="student$((i+1))_${SAMPLE_EMAILS[$idx]}"
-            echo "$email,$name,0,0" >> "$TARGET_DIR/Helpers/assets.csv"
+        echo "Email,Names,Attendance Count,Absence Count" > "$folder/Helpers/assets.csv"
+        for ((i = 0; i < count; i++)); do
+            n=$((i % 10))
+            echo "$((i + 1))_${emails[$n]}@example.com,${names[$n]},0,0" >> "$folder/Helpers/assets.csv"
         done
-
-        # Fresh roster -> total_sessions: 1
-        sed -i "s/\"total_sessions\": [1, 2, 4-7, 10-12]*/\"total_sessions\": 1/" "$TARGET_DIR/Helpers/config.json"
-        echo "[+] Fresh roster created with $FRESH_COUNT student(s). Config set to total_sessions=1."
+        sed -i "s/\"total_sessions\": [0-9]*/\"total_sessions\": 1/" "$folder/Helpers/config.json"
     fi
 
-    # Step D: File Permissions
-    echo "[*] Enforcing security permissions..."
-    chmod +x "$TARGET_DIR/attendance_checker.py"
-    chmod 600 "$TARGET_DIR/Helpers/config.json"
-    
-    echo -e "\n[+] Permission Confirmation:"
-    echo "    - $TARGET_DIR/attendance_checker.py -> Executable (chmod +x)"
-    echo "    - $TARGET_DIR/Helpers/config.json    -> Owner Read/Write Only (chmod 600)"
+    chmod +x "$folder/attendance_checker.py"
+    chmod 600 "$folder/Helpers/config.json"
+    echo "Permissions set:"
+    echo "  attendance_checker.py -> executable"
+    echo "  config.json -> owner read/write only"
 
-    # Step E: Offer Threshold Updates
-    echo -e "\nDefault Alert Thresholds in config.json: Warning = 75%, Failure = 50%"
-    read -rp "Do you want to update attendance alert thresholds? (y/N): " UPDATE_THRESH
-    if [[ "$UPDATE_THRESH" =~ ^[yY]([eE][sS])?$ ]]; then
-        read -rp "Enter new Warning threshold (0-100) : " WARN_VAL
-        read -rp "Enter new Failure threshold (0-100) : " FAIL_VAL
-        WARN_VAL=${WARN_VAL:-75}
-        FAIL_VAL=${FAIL_VAL:-50}
-
-        sed -i "s/\"warning\": [1, 2, 4-7, 10-12]*/\"warning\": $WARN_VAL/" "$TARGET_DIR/Helpers/config.json"
-        sed -i "s/\"failure\": [1, 2, 4-7, 10-12]*/\"failure\": $FAIL_VAL/" "$TARGET_DIR/Helpers/config.json"
-        echo "[+] Updated thresholds in $TARGET_DIR/Helpers/config.json (Warning: $WARN_VAL%, Failure: $FAIL_VAL%)"
+    read -p "Update the alert thresholds? (y/n): " answer
+    if [ "$answer" = "y" ]; then
+        read -p "Warning threshold [75]: " warn
+        read -p "Failure threshold [50]: " fail
+        warn=${warn:-75}
+        fail=${fail:-50}
+        if [[ $warn =~ ^[0-9]+$ && $fail =~ ^[0-9]+$ ]]; then
+            sed -i "s/\"warning\": [0-9]*/\"warning\": $warn/" "$folder/Helpers/config.json"
+            sed -i "s/\"failure\": [0-9]*/\"failure\": $fail/" "$folder/Helpers/config.json"
+            echo "Thresholds updated."
+        else
+            echo "Invalid numbers. Thresholds were not changed."
+        fi
     fi
 
-    # Disable signal trap on successful completion
     trap - SIGINT SIGTSTP
-    CURRENT_DEPLOY_DIR=""
-
-    echo -e "\n[+] Deployment successfully completed in '$TARGET_DIR'."
-
-    # Step F: Verify deployment by running app
-    echo -e "\n[*] Verifying deployment structure by launching application (Feature 2)..."
-    run_app_in_dir "$TARGET_DIR"
-}
-
-# ------------------------------------------------------------------------------
-# Feature 2: Run Application
-# ------------------------------------------------------------------------------
-run_app_in_dir() {
-    local target="$TARGET_DIR"
-
-    if [ -z "$target" ]; then
-        read -rp "Enter deployed directory: " target
-    fi
-
-    if [ ! -d "$target" ]; then
-        echo "Error: Directory '$target' does not exist." >&2
-        return 1
-    fi
-
-    if [ ! -f "$target/attendance_checker.py" ]; then
-        echo "Error: '$target/attendance_checker.py' not found." >&2
-        return 1
-    fi
-
-    echo -e "\n========================================="
-    echo "        FEATURE 2: RUN APPLICATION       "
-    echo "========================================="
-    echo "[*] Launching interactive Attendance Tracker in '$target'..."
-
-    (
-        cd "$target" || exit 1
-        python3 attendance_checker.py
-    )
+    echo "Deployment finished. Starting the application to test it..."
+    run_in_folder "$folder"
 }
 
 run_app() {
-    run_app_in_dir ""
+    check_tools || return
+    read -p "Enter the project name (example: v1): " name
+    folder="attendance_tracker_$name"
+    if [ ! -f "$folder/attendance_checker.py" ]; then
+        echo "Error: $folder was not found."
+        return
+    fi
+    run_in_folder "$folder"
 }
 
-# ------------------------------------------------------------------------------
-# Feature 3: Archive Log Files
-# ------------------------------------------------------------------------------
 archive_logs() {
-    echo -e "\n========================================="
-    echo "       FEATURE 3: ARCHIVE LOG FILES       "
-    echo "========================================="
-
-    read -rp "Enter deployed project directory name (e.g., attendance_tracker_v1): " LOG_DIR
-
-    if [ ! -d "$LOG_DIR" ]; then
-        echo "Error: Directory '$LOG_DIR' does not exist." >&2
-        return 1
+    read -p "Enter the project name (example: v1): " name
+    folder="attendance_tracker_$name"
+    if [ ! -d "$folder" ]; then
+        echo "Error: $folder was not found."
+        return
     fi
 
-    TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-    ATT_LOG="$LOG_DIR/reports/attendance.log"
-    ABS_LOG="$LOG_DIR/reports/absent.log"
-
-    ATT_ARCHIVE_DIR="$LOG_DIR/archives/attendance"
-    ABS_ARCHIVE_DIR="$LOG_DIR/archives/absent"
-
-    mkdir -p "$ATT_ARCHIVE_DIR"
-    mkdir -p "$ABS_ARCHIVE_DIR"
-
-    archived_any=0
-
-    # Archive attendance log
-    if [ -f "$ATT_LOG" ]; then
-        DEST_ATT="$ATT_ARCHIVE_DIR/attendance_${TIMESTAMP}.log"
-        cp "$ATT_LOG" "$DEST_ATT"
-        echo "[+] Archived attendance log:"
-        echo "    Source: $ATT_LOG"
-        echo "    Target: $DEST_ATT"
-        archived_any=1
-    else
-        echo "[!] Notice: '$ATT_LOG' does not exist. Skipping attendance log archive."
-    fi
-
-    # Archive absent log
-    if [ -f "$ABS_LOG" ]; then
-        DEST_ABS="$ABS_ARCHIVE_DIR/absent_${TIMESTAMP}.log"
-        cp "$ABS_LOG" "$DEST_ABS"
-        echo "[+] Archived absent log:"
-        echo "    Source: $ABS_LOG"
-        echo "    Target: $DEST_ABS"
-        archived_any=1
-    else
-        echo "[!] Notice: '$ABS_LOG' does not exist. Skipping absent log archive."
-    fi
-
-    if [ "$archived_any" -eq 1 ]; then
-        echo "[+] Log archiving operation completed successfully."
-    else
-        echo "[*] No operational logs found to archive in '$LOG_DIR/reports'."
-    fi
-}
-
-# ------------------------------------------------------------------------------
-# Interactive Menu Loop
-# ------------------------------------------------------------------------------
-show_menu() {
-    while true; do
-        echo -e "\n================================================="
-        echo "  STUDENT ATTENDANCE TRACKER - DEPLOY AGENT MENU "
-        echo "================================================="
-        echo "  1) Feature 1: Deploy Application"
-        echo "  2) Feature 2: Run Application"
-        echo "  3) Feature 3: Archive Operational Logs"
-        echo "  4) Exit"
-        echo "================================================="
-        read -rp "Select an option [1, 2, 3, 4]: " CHOICE
-
-        case "$CHOICE" in
-            1) deploy_app ;;
-            2) run_app ;;
-            3) archive_logs ;;
-            4)
-                echo "Exiting Deploy Agent. Goodbye!"
-                exit 0
-                ;;
-            *)
-                echo "Invalid selection. Please enter 1, 2, 3, or 4."
-                ;;
-        esac
+    stamp=$(date +%Y%m%d_%H%M%S)
+    for kind in attendance absent; do
+        log="$folder/reports/$kind.log"
+        if [ -f "$log" ]; then
+            cp "$log" "$folder/archives/$kind/${kind}_$stamp.log"
+            echo "Archived: $folder/archives/$kind/${kind}_$stamp.log"
+        else
+            echo "No $kind.log found. Skipped."
+        fi
     done
 }
 
+while true; do
+    echo
+    echo "===== Attendance Tracker Menu ====="
+    echo "1) Deploy the application"
+    echo "2) Run the application"
+    echo "3) Archive the log files"
+    echo "4) Exit"
+    read -p "Choose 1-4: " option || exit 0
 
-case "$1" in
-    --deploy|-d)
-        deploy_app
-        ;;
-    --run|-r)
-        run_app
-        ;;
-    --archive|-a)
-        archive_logs
-        ;;
-    *)
-        show_menu
-        ;;
-esac
+    case "$option" in
+        1) deploy_app ;;
+        2) run_app ;;
+        3) archive_logs ;;
+        4) echo "Goodbye!"; exit 0 ;;
+        *) echo "Please choose 1, 2, 3 or 4." ;;
+    esac
+done
+
