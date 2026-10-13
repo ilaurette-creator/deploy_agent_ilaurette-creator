@@ -1,0 +1,5 @@
+=== Session recorded 2026-10-13 06:33:45.701868 | total_sessions=5 | mode=live ===
+[2026-10-13 06:33:40.190700] Alice Johnson <alice@example.com>: ABSENT - attended 4/5 = 80.0%
+[2026-10-13 06:33:42.146399] Bob Smith <bob@example.com>: ABSENT - attended 1/5 = 20.0% | URGENT: below the failure threshold - will fail this class
+[2026-10-13 06:33:44.214481] Charlie Davis <charlie@example.com>: PRESENT - attended 3/5 = 60.0% | WARNING: below the warning threshold - please be careful
+[2026-10-13 06:33:45.701795] Diana Prince <diana@example.com>: PRESENT - attended 4/5 = 80.0%

@@ -3,19 +3,20 @@ CURRENT_DEPLOY_DIR=""
 
 check_dependencies() {
     local missing=0
-    if ! command -v python3 &> /dev/null; then
-        echo "Error: Required command 'python3' is not installed." >&2
-        missing=1
-    fi
-    if ! command -v zip &> /dev/null; then
-        echo "Error: Required command 'zip' is not installed." >&2
-        missing=1
-    fi
 
-    if [ "$missing" -eq 1 ]; then
-        echo "Pre-flight checks failed. Please install missing dependencies." >&2
-        exit 1
-    fi
+if command -v python3 >/dev/null; then
+    echo "python3 is  installed $(python3 --version)"
+else 
+    echo "python3 is not installed"
+fi
+
+if command -v zip >/dev/null; then
+    echo "zip is installed$(zip -v |head -n 2 |tail -n 1)"
+else
+    
+    echo "zip is not installed"
+fi
+
 }
 
 # ------------------------------------------------------------------------------
@@ -51,7 +52,7 @@ deploy_app() {
     echo "========================================="
 
     # Step A: Prompt for directory suffix
-    read -rp "Enter directory suffix or name (e.g., v1 or test_run): " DIR_INPUT
+    read -p "Enter directory name: " DIR_INPUT
     if [ -z "$DIR_INPUT" ]; then
         DIR_INPUT="v1"
         echo "[*] Defaulting suffix to 'v1'"
@@ -175,10 +176,10 @@ deploy_app() {
 # Feature 2: Run Application
 # ------------------------------------------------------------------------------
 run_app_in_dir() {
-    local target="$1"
+    local target="$TARGET_DIR"
 
     if [ -z "$target" ]; then
-        read -rp "Enter deployed project directory to run (e.g., attendance_tracker_v1): " target
+        read -rp "Enter deployed directory: " target
     fi
 
     if [ ! -d "$target" ]; then
@@ -277,7 +278,7 @@ show_menu() {
         echo "  3) Feature 3: Archive Operational Logs"
         echo "  4) Exit"
         echo "================================================="
-        read -rp "Select an option [1, 2, 4, 10]: " CHOICE
+        read -rp "Select an option [1, 2, 3, 4]: " CHOICE
 
         case "$CHOICE" in
             1) deploy_app ;;
@@ -294,9 +295,7 @@ show_menu() {
     done
 }
 
-# ------------------------------------------------------------------------------
-# Entrypoint: Support command-line flags or fallback to menu
-# ------------------------------------------------------------------------------
+
 case "$1" in
     --deploy|-d)
         deploy_app
