@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-cd "$(dirname "$0")"  
+ 
 folder=""
 # Check if required tools are installed
 check_tools() {
@@ -17,13 +17,14 @@ else
 fi
 }
 
+#Make sure the application runs in the current directory
 run_in_folder() {
     ( cd "$1" && python3 attendance_checker.py )
 }
 
 # Runs when the user presses Ctrl+C or Ctrl+Z during deployment
 stop_deploy() {
-    echo
+   
     echo "Deployment was interrupted!"
     if [ -d "$folder" ]; then
         if zip -r "${folder}_archive.zip" "$folder" > /dev/null; then
@@ -33,27 +34,29 @@ stop_deploy() {
             echo "Could not create the zip file."
         fi
     fi
-    exit 130
+    exit 1
 }
 
 deploy_app() {
     check_tools || return
     echo "Checks passed: python3 and zip are installed."
 
-    read -p "Enter a name for the project (example: v1): " name
+    read -p "Enter a name for the project: " name
     if [[ ! $name =~ ^[A-Za-z0-9_-]+$ ]]; then
         echo "Error: use only letters, numbers, - and _"
         return
     fi
     folder="attendance_tracker_$name"
-
+	
+    #Check the availability of the files
     for file in attendance_checker.py config.json assets.csv; do
         if [ ! -f "templates/$file" ]; then
             echo "Error: templates/$file is missing."
             return
         fi
     done
-
+	
+    #populate the files
     if [ -d "$folder" ]; then
         read -p "$folder already exists. Overwrite it? (y/n): " answer
         if [ "$answer" != "y" ]; then
@@ -81,6 +84,8 @@ deploy_app() {
         head -n 1 templates/assets.csv > "$folder/Helpers/assets.csv"
         tail -n +2 templates/assets.csv | head -n "$count" >> "$folder/Helpers/assets.csv"
     else
+
+	#Template Roster	    
         read -p "How many new students? " count
         if [[ ! $count =~ ^[1-9][0-9]*$ ]]; then
             count=5
@@ -93,15 +98,20 @@ deploy_app() {
             n=$((i % 10))
             echo "$((i + 1))_${emails[$n]}@example.com,${names[$n]},0,0" >> "$folder/Helpers/assets.csv"
         done
+
+	#Fresh Roster
         sed -i "s/\"total_sessions\": [0-9]*/\"total_sessions\": 1/" "$folder/Helpers/config.json"
     fi
 
+    #Now we are giving permission
     chmod +x "$folder/attendance_checker.py"
     chmod 600 "$folder/Helpers/config.json"
     echo "Permissions set:"
     echo "  attendance_checker.py -> executable"
     echo "  config.json -> owner read/write only"
-
+    
+    ##NOw the user can choose either to change the threshold or to stick with the default one
+    echo "The dafault Warning is [75] while the default for Failure  is [50]"
     read -p "Update the alert thresholds? (y/n): " answer
     if [ "$answer" = "y" ]; then
         read -p "Warning threshold [75]: " warn
@@ -115,16 +125,18 @@ deploy_app() {
         else
             echo "Invalid numbers. Thresholds were not changed."
         fi
-    fi
-
+    fi 
+	
+    #Then because the application has run successful we disable the Signals
     trap - SIGINT SIGTSTP
     echo "Deployment finished. Starting the application to test it..."
     run_in_folder "$folder"
 }
-
+ 
+#Feature2: Running the Application
 run_app() {
     check_tools || return
-    read -p "Enter the project name (example: v1): " name
+    read -p "Enter the project name: " name
     folder="attendance_tracker_$name"
     if [ ! -f "$folder/attendance_checker.py" ]; then
         echo "Error: $folder was not found."
@@ -133,8 +145,9 @@ run_app() {
     run_in_folder "$folder"
 }
 
+#Feature3: Archiving Logs
 archive_logs() {
-    read -p "Enter the project name (example: v1): " name
+    read -p "Enter the project name: " name
     folder="attendance_tracker_$name"
     if [ ! -d "$folder" ]; then
         echo "Error: $folder was not found."
