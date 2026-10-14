@@ -5,10 +5,10 @@ DEPLOY_AGENT.SH is a script that sets up the Student Attendance Tracker for you,
 ## What the script can do
 
 
- 1) Deploy the application-------> Creates a new project folder with everything inside it, then starts the app to check that it works |
- 2) Run the application------> Starts the attendance tracker in a project you already deployed |
- 3) Archive the log files------> Saves a dated copy of the attendance and absent logs |
- 4) Exit------>  Closes the script |
+ 1) Deploy the application-------> Creates a new project folder with everything inside it, then starts the app to check that it works 
+ 2) Run the application------> Starts the attendance tracker in a project you already deployed 
+ 3) Archive the log files------> Saves a dated copy of the attendance and absent logs 
+ 4) Exit------>  Closes the script 
 
 ## What you need first
 
@@ -115,3 +115,5 @@ The script stops safely. It prints a message, saves whatever was created so far 
 | `python3 is not installed` or `zip is not installed` | Install the missing program, then run the script again |
 | `Permission denied` when running `./deploy_agent.sh` | Run it with `bash deploy_agent.sh` instead |
 | `The folder ... was not found` | Check the project name. Type only the part after `attendance_tracker_` (for example `v1`) |
+
+LINK TO A RUN THROUGH VIDEO: https://youtu.be/yjI6oekJaT8
